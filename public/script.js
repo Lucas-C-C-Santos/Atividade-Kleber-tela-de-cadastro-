@@ -1,63 +1,44 @@
-const express = require("express");
-const sqlite3 = require("sqlite3").verbose();
-const bodyParser = require("body-parser");
-const cors = require("cors");
+document.getElementById("cadastroForm").addEventListener("submit", async function (event) {
+    event.preventDefault();
 
-const app = express();
-const port = 3000;
+    const nome = document.getElementById("nome").value;
+    const email = document.getElementById("email").value;
+    const senha = document.getElementById("senha").value;
 
-// Middleware
-app.use(cors());
-app.use(bodyParser.json());
-app.use(express.static("public"));
+    try {
+        const response = await fetch("/usuarios", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ nome, email, senha })
+        });
 
-// Conexão com SQLite
-const db = new sqlite3.Database("./database.db", (err) => {
-    if (err) {
-        console.error("Erro ao conectar ao banco:", err);
-    } else {
-        console.log("Banco de dados conectado com sucesso.");
+        if (!response.ok) {
+            throw new Error("Erro ao cadastrar usuário");
+        }
+
+        const data = await response.json();
+        alert("Usuário cadastrado com sucesso!");
+
+        document.getElementById("cadastroForm").reset();
+    } catch (error) {
+        console.error("Erro:", error);
+        alert("Falha ao cadastrar usuário.");
     }
 });
 
-// Criar tabela se não existir
-db.run(`CREATE TABLE IF NOT EXISTS usuarios (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    nome TEXT,
-    email TEXT UNIQUE,
-    senha TEXT
-)`);
+async function carregarUsuarios() {
+    try {
+        const response = await fetch("/usuarios");
+        if (!response.ok) throw new Error("Erro ao buscar usuários");
 
-// Rota POST para cadastrar
-app.post("/usuarios", (req, res) => {
-    const { nome, email, senha } = req.body;
+        const usuarios = await response.json();
+        const tabela = document.getElementById("tabelaUsuarios");
 
-    if (!nome || !email || !senha) {
-        return res.status(400).json({ error: "Preencha todos os campos" });
+        tabela.innerHTML = "";
+        usuarios.forEach(u => {
+            tabela.innerHTML += `<tr><td>${u.id}</td><td>${u.nome}</td><td>${u.email}</td></tr>`;
+        });
+    } catch (error) {
+        console.error("Erro:", error);
     }
-
-    db.run(`INSERT INTO usuarios (nome, email, senha) VALUES (?, ?, ?)`,
-        [nome, email, senha],
-        function (err) {
-            if (err) {
-                return res.status(500).json({ error: "Erro ao cadastrar usuário" });
-            }
-            res.json({ id: this.lastID, nome, email });
-        }
-    );
-});
-
-// Rota GET para listar
-app.get("/usuarios", (req, res) => {
-    db.all(`SELECT id, nome, email FROM usuarios`, [], (err, rows) => {
-        if (err) {
-            return res.status(500).json({ error: "Erro ao buscar usuários" });
-        }
-        res.json(rows);
-    });
-});
-
-// Iniciar servidor
-app.listen(port, () => {
-    console.log(`Servidor rodando em http://localhost:${port}`);
-});
+}
