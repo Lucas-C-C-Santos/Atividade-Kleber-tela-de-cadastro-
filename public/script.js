@@ -1,88 +1,63 @@
-const API_BASE = '';
+const express = require("express");
+const sqlite3 = require("sqlite3").verbose();
+const bodyParser = require("body-parser");
+const cors = require("cors");
 
-function showMsg(texto, tipo = 'info') {
-  const msg = document.getElementById('msg');
-  if (!msg) return;
-  msg.textContent = texto;
-  msg.className = `msg ${tipo}`;
-}
+const app = express();
+const port = 3000;
 
-function isEmail(v) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
-}
+// Middleware
+app.use(cors());
+app.use(bodyParser.json());
+app.use(express.static("public"));
 
-document.addEventListener('DOMContentLoaded', () => {
-  const form = document.getElementById('form-cadastro');
-  if (form) {
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const nome = document.getElementById('nome').value.trim();
-      const email = document.getElementById('email').value.trim().toLowerCase();
-      const senha = document.getElementById('senha').value;
-
-      if (!nome || !email || !senha) return showMsg('Preencha todos os campos.', 'error');
-      if (!isEmail(email)) return showMsg('E-mail inválido.', 'error');
-      if (senha.length < 6) return showMsg('A senha deve ter ao menos 6 caracteres.', 'error');
-
-      try {
-        const resp = await fetch(`${API_BASE}/usuarios`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ nome, email, senha })
-        });
-        const data = await resp.json();
-        if (!resp.ok) throw new Error(data.error || 'Erro ao cadastrar.');
-        showMsg('Usuário cadastrado com sucesso!', 'success');
-        form.reset();
-      } catch (err) {
-        showMsg(err.message, 'error');
-      }
-    });
-  }
+// Conexão com SQLite
+const db = new sqlite3.Database("./database.db", (err) => {
+    if (err) {
+        console.error("Erro ao conectar ao banco:", err);
+    } else {
+        console.log("Banco de dados conectado com sucesso.");
+    }
 });
 
-let usuariosCache = [];
+// Criar tabela se não existir
+db.run(`CREATE TABLE IF NOT EXISTS usuarios (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome TEXT,
+    email TEXT UNIQUE,
+    senha TEXT
+)`);
 
-async function carregarUsuarios() {
-  try {
-    showMsg('Carregando usuários...');
-    const resp = await fetch(`${API_BASE}/usuarios`);
-    const data = await resp.json();
-    if (!Array.isArray(data)) throw new Error('Resposta inválida.');
-    usuariosCache = data;
-    renderTabela(usuariosCache);
-    showMsg('');
-  } catch (err) {
-    renderTabela([]);
-    showMsg(err.message || 'Erro ao carregar usuários.', 'error');
-  }
-}
+// Rota POST para cadastrar
+app.post("/usuarios", (req, res) => {
+    const { nome, email, senha } = req.body;
 
-function renderTabela(lista) {
-  const tbody = document.getElementById('tbody');
-  if (!tbody) return;
-  tbody.innerHTML = '';
-  if (!lista.length) {
-    const tr = document.createElement('tr');
-    const td = document.createElement('td');
-    td.colSpan = 3;
-    td.textContent = 'Nenhum usuário encontrado.';
-    tr.appendChild(td);
-    tbody.appendChild(tr);
-    return;
-  }
-  lista.forEach(u => {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${u.id}</td><td>${u.nome}</td><td>${u.email}</td>`;
-    tbody.appendChild(tr);
-  });
-}
+    if (!nome || !email || !senha) {
+        return res.status(400).json({ error: "Preencha todos os campos" });
+    }
 
-function aplicarFiltro(texto) {
-  if (!texto) return renderTabela(usuariosCache);
-  const t = texto.toLowerCase();
-  const filtrados = usuariosCache.filter(u =>
-    u.nome.toLowerCase().includes(t) || u.email.toLowerCase().includes(t)
-  );
-  renderTabela(filtrados);
-}
+    db.run(`INSERT INTO usuarios (nome, email, senha) VALUES (?, ?, ?)`,
+        [nome, email, senha],
+        function (err) {
+            if (err) {
+                return res.status(500).json({ error: "Erro ao cadastrar usuário" });
+            }
+            res.json({ id: this.lastID, nome, email });
+        }
+    );
+});
+
+// Rota GET para listar
+app.get("/usuarios", (req, res) => {
+    db.all(`SELECT id, nome, email FROM usuarios`, [], (err, rows) => {
+        if (err) {
+            return res.status(500).json({ error: "Erro ao buscar usuários" });
+        }
+        res.json(rows);
+    });
+});
+
+// Iniciar servidor
+app.listen(port, () => {
+    console.log(`Servidor rodando em http://localhost:${port}`);
+});
